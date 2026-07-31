@@ -1,5 +1,4 @@
 import tempfile
-import shutil
 from pathlib import Path
 
 import streamlit as st
@@ -12,6 +11,17 @@ from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
+
+
+@st.cache_resource
+def load_embedding_model():
+    return MistralAIEmbeddings()
+
+
+@st.cache_resource
+def load_llm():
+    return ChatMistralAI(model="mistral-small-2603")
+
 
 st.set_page_config(
     page_title="KnowledgeBot - AI Book Assistant",
@@ -44,70 +54,92 @@ if uploaded_file is not None:
                 f.write(uploaded_file.getbuffer())
 
             loader = PyPDFLoader(str(pdf_path))
-            docs = loader.load()
+            documents = loader.load()
 
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200
             )
 
-            chunks = splitter.split_documents(docs)
+            chunks = splitter.split_documents(documents)
 
-            embeddings = MistralAIEmbeddings()
+            MAX_CHUNKS = 1000
 
-            db_path = "temp_chroma"
+            if len(chunks) > MAX_CHUNKS:
+                st.warning(
+                    f"Large PDF detected ({len(chunks)} chunks).\n"
+                    f"Only first {MAX_CHUNKS} chunks will be indexed."
+                )
+                chunks = chunks[:MAX_CHUNKS]
 
-            shutil.rmtree(db_path, ignore_errors=True)
+            st.info(f"Chunks Created: {len(chunks)}")
+
+            embeddings = load_embedding_model()
 
             vectorstore = Chroma.from_documents(
                 documents=chunks,
-                embedding=embeddings,
-                persist_directory=db_path
+                embedding=embeddings
             )
 
             st.session_state.retriever = vectorstore.as_retriever(
                 search_type="mmr",
                 search_kwargs={
-                    "k": 4,
-                    "fetch_k": 10,
-                    "lambda_mult": 0.5
+                    "k": 6,
+                    "fetch_k": 20,
+                    "lambda_mult": 0.7
                 }
             )
 
-            st.success("Knowledge Base Created!")
+            st.success("Knowledge Base Created Successfully!")
 
-if st.session_state.retriever:
+if st.session_state.retriever is not None:
 
     question = st.text_input(
         "Ask a question about the book"
     )
 
-    if st.button("Ask") and question:
+    if st.button("Ask"):
 
-        retriever = st.session_state.retriever
+        if question.strip() == "":
+            st.warning("Please enter a question.")
+            st.stop()
 
-        docs = retriever.invoke(question)
+        with st.spinner("Searching..."):
+
+            retrieved_docs = st.session_state.retriever.invoke(question)
+
+        st.info(f"Retrieved Chunks: {len(retrieved_docs)}")
+
+        if len(retrieved_docs) == 0:
+            st.error("No relevant information found.")
+            st.stop()
 
         context = "\n\n".join(
-            doc.page_content for doc in docs
+            doc.page_content for doc in retrieved_docs
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    """You are a helpful AI assistant.
+                    """
+You are a helpful AI assistant.
 
-Use ONLY the provided context.
+Answer ONLY from the provided context.
 
-If the answer is not found,
-reply:
+If the answer is partially available,
+answer with the available information.
+
+If the answer is not present in the context,
+reply exactly:
+
 'I could not find the answer in the document.'
 """
                 ),
                 (
                     "human",
-                    """Context:
+                    """
+Context:
 {context}
 
 Question:
@@ -124,11 +156,9 @@ Question:
             }
         )
 
-        llm = ChatMistralAI(
-            model="mistral-small-2603"
-        )
+        llm = load_llm()
 
-        with st.spinner("Thinking..."):
+        with st.spinner("Generating Answer..."):
             response = llm.invoke(final_prompt)
 
         st.subheader("Answer")
