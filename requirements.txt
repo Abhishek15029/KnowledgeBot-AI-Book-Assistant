@@ -1,11 +1,15 @@
+# LangChain
+
 langchain
 langchain-core
 langchain-community
+langchain-text-splitters
+langchain-chroma
 
 # LLM Providers
 
-langchain-openai
 langchain-mistralai
+langchain-openai
 openai
 mistralai
 
@@ -17,7 +21,7 @@ chromadb
 
 sentence-transformers
 
-# Document Loaders dependencies
+# Document Loaders
 
 pypdf
 unstructured
@@ -37,12 +41,12 @@ python-dotenv
 pandas
 numpy
 
-# API / App Layer (optional but common in RAG apps)
+# API (Optional)
 
 fastapi
 uvicorn
 
-# UI (optional)
+# UI
 
 streamlit
 
