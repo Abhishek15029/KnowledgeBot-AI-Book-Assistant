@@ -20,7 +20,7 @@ def load_embedding_model():
 
 @st.cache_resource
 def load_llm():
-    return ChatMistralAI(model="mistral-small-2603")
+    return ChatMistralAI(model="mistral-small-latest")
 
 
 st.set_page_config(
